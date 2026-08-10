@@ -1,0 +1,35 @@
+[project]
+name = "rag-project"
+version = "0.1.0"
+description = "RAG over the ML6 blog: scrape, index, retrieve, generate."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "lxml>=6.1.1",
+    "selectolax>=0.4.11",
+    "trafilatura>=2.2.0",
+]
+
+[project.scripts]
+rag-scrape = "rag.ingestion.scrape:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.3.0",
+    "pytest>=8.3.0",
+    "ruff>=0.16.2",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+# The distribution is `rag-project` but the import package is `rag`, so the
+# wheel target has to be named explicitly -- hatchling's autodetect looks for
+# src/rag_project/.
+[tool.hatch.build.targets.wheel]
+packages = ["src/rag"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
