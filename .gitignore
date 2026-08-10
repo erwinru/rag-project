@@ -32,3 +32,22 @@ data/
 
 # Claude settings
 .claude/
+
+# Terraform: provider binaries, module cache, recorded backend config
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# Saved plans contain the full resource diff including secrets in plain text.
+*.tfplan
+*.plan
+
+crash.log
+crash.*.log
+*_override.tf
+*_override.tf.json
+
+# NOT ignored, deliberately:
+#   .terraform.lock.hcl   -- pins provider hashes, belongs in version control
+#   environments/*.tfvars -- account ids and names, no secrets
