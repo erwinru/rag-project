@@ -98,7 +98,9 @@ def blocks_from_html(html: str) -> list[dict]:
 
     Headings become `{"type": "hN", "text": ...}`; everything else -- plain
     paragraphs, and lists/quotes/tables flattened to one paragraph each --
-    becomes `{"type": "p", "text": ...}`.
+    becomes `{"type": "p", "text": ...}`. Each block also gets a 1-based
+    `number`, stable for the life of the article, so a block can later be
+    cited back to the user as an exact reference (article title + number).
     """
     xml = trafilatura.extract(
         html,
@@ -128,7 +130,7 @@ def blocks_from_html(html: str) -> list[dict]:
             text = element_text(element)
             if text:
                 blocks.append({"type": "p", "text": text})
-    return blocks
+    return [{"number": number, **block} for number, block in enumerate(blocks, start=1)]
 
 
 def extract_article_ld(html: str) -> dict:
@@ -294,9 +296,7 @@ def main() -> int:
                 print(f"[{i}/{len(pages)}] FAILED {page.slug}: {exc}", file=sys.stderr)
                 continue
 
-            text_file = write_article(
-                article, page.article_number, ARTICLES_DIR
-            )
+            text_file = write_article(article, page.article_number, ARTICLES_DIR)
             writer.writerow(csv_row(article, page.article_number, text_file))
             written += 1
             print(

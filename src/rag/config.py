@@ -30,12 +30,20 @@ class ScrapeConfig(BaseModel):
     user_agent: str
 
 
+class ChunkingConfig(BaseModel):
+    window_tokens: int
+    heading_search_allowance_tokens: int
+    min_chunk_tokens: int
+
+
 class BedrockConfig(BaseModel):
     # Matches the region the rest of this project's infrastructure runs in
     # (infrastructure/environments/dev/variables.tfvars) -- Bedrock is
     # regional, and Titan Text Embeddings V2 must be invoked in a region that
     # offers it.
     region: str
+    max_attempts: int
+    retry_mode: str
 
 
 class EmbeddingConfig(BaseModel):
@@ -47,6 +55,7 @@ class EmbeddingConfig(BaseModel):
 class Config(BaseModel):
     data: DataConfig
     scrape: ScrapeConfig
+    chunking: ChunkingConfig
     bedrock: BedrockConfig
     embedding: EmbeddingConfig
 

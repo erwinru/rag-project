@@ -13,11 +13,24 @@ sitemap_url = "https://www.ml6.eu/sitemap.xml"
 blog_prefix = "https://www.ml6.eu/en/blog/"
 user_agent = "ml6-blog-post RAG/0.1 (one-off research dump; contact: erwin.rudi@gmail.com)"
 
+[chunking]
+window_tokens = 500
+# How far past the window we're willing to look for the next h2 before giving
+# up and just cutting after the last paragraph that fit. See docs/Chunking.md.
+heading_search_allowance_tokens = 200
+# A raw chunk under this many tokens gets folded into the previous chunk
+# instead of standing alone. See docs/Chunking.md.
+min_chunk_tokens = 50
+
 [bedrock]
 # Matches the region the rest of this project's infrastructure runs in
 # (infrastructure/environments/dev/variables.tfvars) -- Bedrock is regional,
 # and Titan Text Embeddings V2 must be invoked in a region that offers it.
 region = "eu-central-1"
+# "adaptive" paces requests based on observed throttling instead of just
+# retrying blindly -- Titan Embeddings V2 throttles fast under a tight loop.
+max_attempts = 10
+retry_mode = "adaptive"
 
 [embedding]
 model_id = "amazon.titan-embed-text-v2:0"

@@ -18,9 +18,11 @@ dependencies = [
 rag-scrape = "rag.ingestion.scrape:main"
 rag-process = "rag.ingestion.processing:main"
 rag-embed = "rag.embedding.index:main"
+rag-viewer-data = "rag.embedding.viewer_data:main"
 
 [dependency-groups]
 dev = [
+    "ipython>=9.16.1",
     "mypy>=2.3.0",
     "pytest>=8.3.0",
     "ruff>=0.16.2",
