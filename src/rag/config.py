@@ -1,19 +1,61 @@
-"""Where things live on disk.
+"""Typed config object, loaded from config.toml.
 
 Paths are relative to the working directory, not to the installed package, so
-the same code works from a checkout and from an install. Point RAG_DATA_DIR
-somewhere else to move the whole tree at once; individual paths are also
-overridable per-command via CLI flags.
+the same code works from a checkout and from an install. Set RAG_CONFIG_PATH
+to point at a different toml file (e.g. per environment); individual paths
+are also overridable per-command via CLI flags.
 """
 
 from __future__ import annotations
 
 import os
+import tomllib
 from pathlib import Path
 
-DATA_DIR = Path(os.environ.get("RAG_DATA_DIR", "data"))
+from pydantic import BaseModel
 
-CACHE_DIR = DATA_DIR / "cache"
-ARTICLES_DIR = DATA_DIR / "articles"
-CSV_PATH = DATA_DIR / "articles.csv"
-INDEX_DIR = DATA_DIR / "index"
+
+class DataConfig(BaseModel):
+    raw_html_dir: Path
+    # Manifest written by the scrape step, read by the processing step.
+    pages_csv: Path
+    articles_dir: Path
+    csv_path: Path
+    index_dir: Path
+
+
+class ScrapeConfig(BaseModel):
+    sitemap_url: str
+    blog_prefix: str
+    user_agent: str
+
+
+class BedrockConfig(BaseModel):
+    # Matches the region the rest of this project's infrastructure runs in
+    # (infrastructure/environments/dev/variables.tfvars) -- Bedrock is
+    # regional, and Titan Text Embeddings V2 must be invoked in a region that
+    # offers it.
+    region: str
+
+
+class EmbeddingConfig(BaseModel):
+    model_id: str
+    dimensions: int
+    collection_name: str
+
+
+class Config(BaseModel):
+    data: DataConfig
+    scrape: ScrapeConfig
+    bedrock: BedrockConfig
+    embedding: EmbeddingConfig
+
+
+def load_config(path: Path) -> Config:
+    with path.open("rb") as f:
+        raw = tomllib.load(f)
+    return Config.model_validate(raw)
+
+
+CONFIG_PATH = Path(os.environ.get("RAG_CONFIG_PATH", "config.toml"))
+config = load_config(CONFIG_PATH)

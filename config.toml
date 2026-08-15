@@ -1,0 +1,25 @@
+# RAG pipeline configuration. Paths are relative to the working directory,
+# not to the installed package -- see src/rag/config.py.
+
+[data]
+raw_html_dir = "data/raw_html"
+pages_csv = "data/pages.csv"
+articles_dir = "data/articles"
+csv_path = "data/articles.csv"
+index_dir = "data/index"
+
+[scrape]
+sitemap_url = "https://www.ml6.eu/sitemap.xml"
+blog_prefix = "https://www.ml6.eu/en/blog/"
+user_agent = "ml6-blog-post RAG/0.1 (one-off research dump; contact: erwin.rudi@gmail.com)"
+
+[bedrock]
+# Matches the region the rest of this project's infrastructure runs in
+# (infrastructure/environments/dev/variables.tfvars) -- Bedrock is regional,
+# and Titan Text Embeddings V2 must be invoked in a region that offers it.
+region = "eu-central-1"
+
+[embedding]
+model_id = "amazon.titan-embed-text-v2:0"
+dimensions = 1024
+collection_name = "ml6_blog"
