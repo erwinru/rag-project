@@ -8,9 +8,9 @@ from chromadb.api.models.Collection import Collection
 from rag.config import config
 
 
-def get_collection() -> Collection:
+def get_vector_db_collection() -> Collection:
     client = chromadb.PersistentClient(path=str(config.data.index_dir))
-    return client.get_or_create_collection(config.embedding.collection_name)
+    return client.get_or_create_collection(config.embedding.resolved_collection_name)
 
 
 def upsert_chunks(

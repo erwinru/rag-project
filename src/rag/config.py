@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import tomllib
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -46,18 +47,52 @@ class BedrockConfig(BaseModel):
     retry_mode: str
 
 
-class EmbeddingConfig(BaseModel):
+class BedrockEmbeddingConfig(BaseModel):
     model_id: str
     dimensions: int
+
+
+class HuggingFaceEmbeddingConfig(BaseModel):
+    model_id: str
+
+
+class EmbeddingConfig(BaseModel):
+    # Which embedding backend rag.embedding.embedding.embed_text() uses.
+    # See docs/Embedding.md.
+    provider: Literal["bedrock", "huggingface"]
     collection_name: str
+    bedrock: BedrockEmbeddingConfig
+    huggingface: HuggingFaceEmbeddingConfig
+
+    @property
+    def resolved_collection_name(self) -> str:
+        """Chroma collection actually used -- suffixed by provider, since
+        each provider's model produces a different vector dimension (Titan
+        V2: 1024, MiniLM-L6-v2: 384) and a single Chroma collection locks
+        to whichever dimension it saw first. See docs/Embedding.md.
+        """
+        return f"{self.collection_name}_{self.provider}"
+
+
+class RetrievalConfig(BaseModel):
+    top_k: int
+
+
+class GenerationConfig(BaseModel):
+    # eu-central-1 has no in-region Claude Haiku 4.5 -- only the EU
+    # cross-region inference profile ("eu." prefix). See docs/Retrieval.md.
+    model_id: str
+    max_tokens: int
 
 
 class Config(BaseModel):
     data: DataConfig
     scrape: ScrapeConfig
     chunking: ChunkingConfig
+    retrieval: RetrievalConfig
     bedrock: BedrockConfig
     embedding: EmbeddingConfig
+    generation: GenerationConfig
 
 
 def load_config(path: Path) -> Config:

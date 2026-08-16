@@ -16,7 +16,7 @@ import sys
 from rag.config import config
 from rag.embedding.chunking import chunk_article_file
 from rag.embedding.embedding import embed_text
-from rag.embedding.store import get_collection, upsert_chunks
+from rag.embedding.store import get_vector_db_collection, upsert_chunks
 
 
 def main() -> int:
@@ -27,7 +27,7 @@ def main() -> int:
     paths = sorted(config.data.articles_dir.glob("*.json"))
     print(f"Found {len(paths)} articles in {config.data.articles_dir}", file=sys.stderr)
 
-    collection = get_collection()
+    collection = get_vector_db_collection()
     total_chunks = 0
 
     for i, path in enumerate(paths, start=1):
@@ -40,7 +40,7 @@ def main() -> int:
 
     print(
         f"\nEmbedded {total_chunks} chunks from {len(paths)} articles "
-        f"into '{config.embedding.collection_name}' ({INDEX_DIR}).",
+        f"into '{config.embedding.resolved_collection_name}' ({INDEX_DIR}).",
         file=sys.stderr,
     )
     return 0

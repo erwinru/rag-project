@@ -1,38 +1,20 @@
-"""Text embedding via Amazon Bedrock (Titan Text Embeddings V2)."""
+"""Text embedding dispatcher -- picks a provider (Bedrock or local Hugging
+Face) based on config.embedding.provider. See docs/Embedding.md.
+"""
 
 from __future__ import annotations
 
-import json
-
-import boto3
-from botocore.config import Config as BotoConfig
+import sys
 
 from rag.config import config
 
-client = boto3.client(
-    "bedrock-runtime",
-    region_name=config.bedrock.region,
-    config=BotoConfig(
-        retries={
-            "max_attempts": config.bedrock.max_attempts,
-            "mode": config.bedrock.retry_mode,
-        }
-    ),
-)
+print(f"[embedding] using provider: {config.embedding.provider}", file=sys.stderr)
 
+if config.embedding.provider == "bedrock":
+    from rag.embedding.providers.bedrock import embed_text
+elif config.embedding.provider == "huggingface":
+    from rag.embedding.providers.huggingface import embed_text
+else:
+    raise ValueError(f"Unknown embedding provider: {config.embedding.provider!r}")
 
-def embed_text(text: str) -> list[float]:
-    response = client.invoke_model(
-        modelId=config.embedding.model_id,
-        body=json.dumps(
-            {
-                "inputText": text,
-                "dimensions": config.embedding.dimensions,
-                "normalize": True,
-            }
-        ),
-        accept="application/json",
-        contentType="application/json",
-    )
-    payload = json.loads(response["body"].read())
-    return payload["embedding"]
+__all__ = ["embed_text"]
