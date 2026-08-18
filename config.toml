@@ -75,6 +75,11 @@ max_tokens = 1024
 # See docs/Evaluation.md.
 ragas_questions_per_article = 5
 ragas_output_path = "data/eval/ragas_qa.json"
+# How many personas RAGAS infers per article to write questions in the voice
+# of. Regenerated per article (personas are derived from that article's own
+# chunks), so this is a per-article count, not a corpus-wide one. See
+# docs/Evaluation.md.
+ragas_personas_per_article = 3
 # Which LLM the generator uses -- "bedrock" or "huggingface" (local model,
 # no AWS dependency, but noticeably weaker at RAGAS's structured JSON
 # prompts -- see docs/Evaluation.md).

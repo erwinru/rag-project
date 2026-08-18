@@ -19,13 +19,19 @@ article -- 5 + 5):
    template, more control but hand-rolled, consistent with how the rest of
    this project (chunking, retrieval) avoids frameworks.
 
-`rag-eval-ragas` runs `TestsetGenerator` **once per article**, not once
-for the whole corpus -- see Decisions for why. Output is written to
-`config.evaluation.ragas_output_path` (`data/eval/ragas_qa.json`), each row
-tagged with `source_article` (the article's `slug`) so generated questions
-can be traced back to which document they should be answerable from --
-needed to score retrieval (did the right chunk come back?), not just
-generation quality.
+`rag-eval-ragas` runs the generator **once per article**, not once for the
+whole corpus, and within each article it generates from **this project's own
+chunks** rather than letting RAGAS re-split the article text -- see Decisions
+for both. Output is written to `config.evaluation.ragas_output_path`
+(`data/eval/ragas_qa.json`); on top of RAGAS's own columns each row carries:
+
+- `source_article` -- the article's `slug`, so a question can be traced to
+  the document it should be answerable from (article-level retrieval
+  scoring: did *a* chunk of the right article come back?).
+- `reference_chunk_ids` -- the `{slug}::chunk-NN` ids of the exact chunks the
+  question and reference answer were written from (chunk-level scoring: did
+  *the* supporting chunk come back, and at what rank?). Multi-hop rows carry
+  more than one.
 
 ## Decisions
 
@@ -42,11 +48,48 @@ generation quality.
   unambiguous at the cost of losing genuine cross-article multi-hop
   questions (a document has enough internal chunks/sections for
   within-article multi-hop, just not across articles).
-- **Generator LLM is Claude Haiku via `ChatBedrockConverse`, reusing
-  `config.generation.model_id`/`config.bedrock.region`** -- the same model
-  already wired up (in principle -- see Testing below) for the RAG
-  pipeline's own answer generation, rather than introducing a third model
-  just for eval data generation.
+
+- **Questions are generated from this project's chunks, not RAGAS's own
+  splits.** `TestsetGenerator.generate_with_langchain_docs()` hardcodes two
+  things: it wraps each document as a `NodeType.DOCUMENT` node, and it
+  builds `default_transforms()`, which includes RAGAS's `HeadlinesExtractor`
+  + `HeadlineSplitter`. So passing a whole article always got it re-split by
+  RAGAS, and the resulting `reference_contexts` corresponded to nothing in
+  the Chroma index -- scoring "did retrieval return the supporting chunk?"
+  would have needed fuzzy text-overlap matching against a tuned similarity
+  threshold, with all the arbitrariness that implies.
+
+  Instead the knowledge graph is built by hand: one `NodeType.CHUNK` node
+  per chunk from `rag.embedding.chunking.chunk_article_file` (the *same*
+  function `rag-embed` indexes with), and `default_transforms_for_prechunked`
+  -- a first-class RAGAS entry point whose whole purpose is to skip the
+  splitting step -- applied over it, then `generator.generate()` directly.
+  Both synthesizers copy a node's `page_content` verbatim into
+  `reference_contexts` (multi-hop prefixes each with `<N-hop>`), so mapping
+  a generated row back to chunk ids is an exact dict lookup, not a
+  similarity match. Any context that fails to resolve is counted and
+  reported at the end of the run rather than silently dropped -- 0 is the
+  expected number, and anything else means a RAGAS version changed that
+  assumption.
+
+- **Personas are regenerated per article.** `generate()` only infers
+  personas when `persona_list is None`, and caches them on the generator
+  afterwards -- so reusing one `TestsetGenerator` across a per-article loop
+  silently applies the *first* article's personas to the entire corpus. The
+  previous dataset shows the damage: 808 rows, exactly one persona
+  ("Computer Vision Engineer", inferred from the first article, alphabetically
+  a 3D computer vision post) writing questions about every other topic in the
+  corpus. `generate_for_article` resets `persona_list` to `None` per article;
+  `config.evaluation.ragas_personas_per_article` controls how many.
+
+- **One un-generatable article skips instead of aborting the batch.** RAGAS's
+  LLM-backed `CustomNodeFilter` can reject every chunk of a short or
+  low-signal article, after which `default_query_distribution` raises because
+  no synthesizer has a usable node cluster left. A full-corpus run is far too
+  expensive (several LLM calls per chunk, ~680 chunks) to lose at article 100
+  over one such article, so `main()` catches per-article failures, logs the
+  article name, and continues -- reporting the skip list at the end.
+
 - **Generator embeddings are always the local Hugging Face model
   (`config.embedding.huggingface.model_id`), regardless of
   `config.embedding.provider`.** RAGAS only needs embeddings internally,
@@ -55,11 +98,19 @@ generation quality.
   configured to search with. Hardcoding it to the always-available local
   model means test-set generation never depends on Bedrock/Titan access at
   all, only the generator *LLM* does.
-- **Article text reuses `rag.embedding.chunking.chunk_text`** (blank line
-  around headings, single newline elsewhere) to build the LangChain
-  `Document` handed to RAGAS, rather than a second ad hoc text-joining
-  function -- one canonical "block list -> string" formatter for the whole
-  project.
+
+- **The generator LLM is configurable and deliberately not the pipeline's own
+  generation model.** `config.evaluation.generator_llm_provider` picks
+  `bedrock` (`config.evaluation.bedrock.model_id`, currently
+  `qwen.qwen3-coder-30b-a3b-v1:0`) or `huggingface` (a small local model, no
+  AWS dependency, but noticeably weaker at RAGAS's structured JSON prompts).
+  Claude Haiku -- `config.generation.model_id`, what the RAG pipeline itself
+  would answer with -- is deliberately *not* used here: it is still blocked
+  on the Anthropic use-case form and an IAM deny (see
+  [`Troubleshooting.md`](Troubleshooting.md#bedrock-claude-haiku-converse----accessdeniedexception-unresolved-different-bug)),
+  and generating eval data with the same model under evaluation would be
+  circular anyway.
+
 - **New dependencies, and one had to be pinned:** `ragas`, `langchain-aws`
   (the `ChatBedrockConverse` wrapper), `langchain-huggingface` (the
   embeddings wrapper), and `rapidfuzz` (an undeclared runtime import inside
@@ -74,29 +125,51 @@ generation quality.
 
 ## Testing
 
-**Not yet verified end to end.** Config loading, all imports (`ragas`,
-`langchain_aws`, `langchain_huggingface`), and the local embeddings half all
-work. The generator LLM call itself is currently blocked: Bedrock Converse
-against `eu.anthropic.claude-haiku-4-5-20251001-v1:0` fails with
-`AccessDeniedException` (an explicit IAM deny, unrelated to and distinct
-from the Titan quota issue) -- see
-[`Troubleshooting.md`](Troubleshooting.md#bedrock-claude-haiku-converse----accessdeniedexception-unresolved-different-bug).
-Decided to wait for that to be fixed on the AWS side rather than swap in a
-different generator LLM provider, so a real single-article
-(`testset_size=2`) smoke test is still pending -- do that before ever
-running the full 142-article batch, since each article run is several real
-LLM calls (persona/summary/query synthesis steps), not one.
+**The chunk-grounded rewrite has not been run end to end yet.** What is
+verified, offline and without a single LLM call: config loading, all imports,
+`build_chunk_nodes` producing `NodeType.CHUNK` nodes from
+`chunk_article_file` output, and `resolve_reference_chunk_ids` round-tripping
+both a verbatim single-hop context and a `<N-hop>`-prefixed multi-hop pair
+back to the right chunk ids (and returning `None` for an unknown context).
+The RAGAS API details this rewrite depends on were read out of the installed
+`ragas==0.4.3` rather than assumed.
+
+**Not verified:** the transforms + `generate()` path itself, which needs live
+generator-LLM calls. Do a `ragas_questions_per_article=2`, single-article
+smoke test before any full batch -- each article is now several LLM calls
+*per chunk* (summary, themes, NER, node filter), not per article.
+
+A previous, pre-rewrite full batch did complete: 808 rows over 135 of 142
+articles, preserved at `data/eval/ragas_qa_old.json`. It is still usable for
+article-level scoring, but not chunk-level (its contexts are RAGAS's own
+splits), and its questions all carry the single leaked persona described
+above.
 
 ## Checklist / open edge cases
 
-- [ ] Full IAM-unblocked smoke test on 1-2 articles, to confirm the actual
-      generated question/answer shape before running all 142 articles
+- [ ] Single-article smoke test of the chunk-grounded path before the full
+      142-article batch
+- [ ] No cost/time estimate for the full batch under the new node count
+      (~680 chunk nodes vs. 142 document nodes; RAGAS's own splitter had
+      already been producing a comparable number of chunk nodes, so the real
+      increase is `SummaryExtractor` now running per chunk rather than per
+      document)
+- [ ] Adjacent chunks share text: `chunk_blocks` prepends the title and
+      carries an overlap paragraph from the previous chunk, so a question
+      drawn from an overlap region is genuinely answerable from two chunks
+      while `reference_chunk_ids` names only the one RAGAS sampled. Retrieval
+      scoring should count an adjacent-chunk hit as its own category rather
+      than a clean miss.
+- [ ] `CustomNodeFilter` silently excludes low-quality chunks from eval
+      entirely -- which are exactly the chunks most likely to be retrieval
+      failures. Worth logging how many nodes it drops per article.
 - [ ] Option 2 (custom-prompted generator, the other 5 questions/article)
       not started
 - [ ] No dedup or quality filtering on RAGAS's output yet -- rows are
-      written as-is from `testset.to_pandas()`
-- [ ] `ragas_questions_per_article = 5` is the requested starting number,
-      not validated against actual output quality/diversity per article
-- [ ] No cost/time estimate yet for the full 142-article batch (each
-      article is several LLM calls, not one) -- worth sizing before running
-      it unattended
+      written as-is from `testset.to_pandas()` (the old dataset had 2
+      duplicate questions out of 808)
+- [ ] `ragas_questions_per_article = 5` and `ragas_personas_per_article = 3`
+      are starting numbers, not validated against actual output
+      quality/diversity per article
+- [ ] Nothing consumes `reference_chunk_ids` yet -- the eval/metrics script
+      that scores retrieval against this dataset is the next piece

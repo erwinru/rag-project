@@ -115,6 +115,9 @@ class EvaluationConfig(BaseModel):
     # docs/Evaluation.md.
     ragas_questions_per_article: int
     ragas_output_path: Path
+    # Personas RAGAS infers per article, regenerated from each article's own
+    # chunks rather than reused corpus-wide. See docs/Evaluation.md.
+    ragas_personas_per_article: int
     # Which LLM RAGAS's TestsetGenerator uses as its generator model --
     # "bedrock" or "huggingface" (a local model). Independent of
     # config.embedding.provider.
