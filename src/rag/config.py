@@ -94,6 +94,35 @@ class GenerationConfig(BaseModel):
     max_tokens: int
 
 
+class EvaluationBedrockGeneratorConfig(BaseModel):
+    # Deliberately separate from config.generation.model_id -- that's
+    # Claude Haiku, for the RAG pipeline's own answer generation; this is
+    # whichever Bedrock model RAGAS's generator uses, independently. See
+    # docs/Evaluation.md.
+    model_id: str
+
+
+class EvaluationHuggingFaceGeneratorConfig(BaseModel):
+    model_id: str
+    max_new_tokens: int
+    # "auto" lets accelerate pick the best available device (MPS on Apple
+    # Silicon, CUDA if present, else CPU) -- see docs/Evaluation.md.
+    device_map: str
+
+
+class EvaluationConfig(BaseModel):
+    # Synthetic QA generation for retrieval/generation eval. See
+    # docs/Evaluation.md.
+    ragas_questions_per_article: int
+    ragas_output_path: Path
+    # Which LLM RAGAS's TestsetGenerator uses as its generator model --
+    # "bedrock" or "huggingface" (a local model). Independent of
+    # config.embedding.provider.
+    generator_llm_provider: Literal["bedrock", "huggingface"]
+    bedrock: EvaluationBedrockGeneratorConfig
+    huggingface: EvaluationHuggingFaceGeneratorConfig
+
+
 class Config(BaseModel):
     data: DataConfig
     scrape: ScrapeConfig
@@ -103,6 +132,7 @@ class Config(BaseModel):
     bedrock: BedrockConfig
     embedding: EmbeddingConfig
     generation: GenerationConfig
+    evaluation: EvaluationConfig
 
 
 def load_config(path: Path) -> Config:
