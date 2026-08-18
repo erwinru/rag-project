@@ -1,0 +1,20 @@
+# Convenience wrapper for `docker run` -- see docs/Docker.md.
+#   docker compose up --build
+services:
+  api:
+    build: .
+    image: rag-api:latest
+    ports:
+      - "8000:8000"
+    volumes:
+      # The Chroma index is data, not source: it's gitignored, ~18MB, and
+      # rebuilt by `uv run rag-embed`. Mounted rather than baked in so
+      # re-indexing doesn't mean rebuilding the image. Read-write on
+      # purpose -- Chroma's sqlite needs to write even to serve queries.
+      - ./data/index:/app/data/index
+    # Only needed if config.embedding.provider is switched to "bedrock":
+    # environment:
+    #   - AWS_ACCESS_KEY_ID
+    #   - AWS_SECRET_ACCESS_KEY
+    #   - AWS_SESSION_TOKEN
+    #   - AWS_REGION

@@ -7,12 +7,14 @@ requires-python = ">=3.13"
 dependencies = [
     "boto3>=1.43.68",
     "chromadb>=1.5.9",
+    "fastapi>=0.121.0",
     "httpx>=0.28.1",
     "lxml>=6.1.1",
     "pydantic>=2.13.4",
     "selectolax>=0.4.11",
     "sentence-transformers>=3.3.1",
     "trafilatura>=2.2.0",
+    "uvicorn>=0.42.0",
 ]
 
 [project.scripts]
@@ -21,6 +23,7 @@ rag-process = "rag.ingestion.processing:main"
 rag-embed = "rag.embedding.index:main"
 rag-viewer-data = "rag.embedding.viewer_data:main"
 rag-ask = "rag.retrieval.ask:main"
+rag-api = "rag.api.app:main"
 
 [dependency-groups]
 dev = [

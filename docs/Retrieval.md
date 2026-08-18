@@ -25,6 +25,7 @@ local lookup:
 
 [`ask.py`](../src/rag/retrieval/ask.py) wires these together and is the
 `rag-ask` CLI entry point.
+Steps 1-2 are also exposed over HTTP -- see [`API.md`](API.md).
 
 ## Decisions
 

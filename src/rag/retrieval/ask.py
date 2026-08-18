@@ -15,32 +15,7 @@ from __future__ import annotations
 import sys
 
 from rag.config import config
-from rag.embedding.store import get_vector_db_collection
-from rag.embedding.embedding import embed_text
-
-
-def search(question: str, top_k: int = 3) -> list[dict]:
-    collection = get_vector_db_collection()
-    query_embedding = embed_text(question)
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=top_k,
-    )
-
-    ids = results["ids"] or [[]]
-    documents = results["documents"] or [[]]
-    metadatas = results["metadatas"] or [[]]
-    distances = results["distances"] or [[]]
-
-    return [
-        {
-            "id": ids[0][i],
-            "text": documents[0][i],
-            "metadata": metadatas[0][i],
-            "distance": distances[0][i],
-        }
-        for i in range(len(ids[0]))
-    ]
+from rag.retrieval.search import search
 
 
 def main() -> int:

@@ -78,6 +78,15 @@ class RetrievalConfig(BaseModel):
     top_k: int
 
 
+class ApiConfig(BaseModel):
+    # Bind address for the FastAPI retrieval service (rag.api.app).
+    host: str
+    port: int
+    # Ceiling on a request's `top_k` -- retrieval.top_k is the default, this
+    # is how far a caller is allowed to raise it. See docs/API.md.
+    max_top_k: int
+
+
 class GenerationConfig(BaseModel):
     # eu-central-1 has no in-region Claude Haiku 4.5 -- only the EU
     # cross-region inference profile ("eu." prefix). See docs/Retrieval.md.
@@ -90,6 +99,7 @@ class Config(BaseModel):
     scrape: ScrapeConfig
     chunking: ChunkingConfig
     retrieval: RetrievalConfig
+    api: ApiConfig
     bedrock: BedrockConfig
     embedding: EmbeddingConfig
     generation: GenerationConfig

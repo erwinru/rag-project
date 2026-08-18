@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from rag.config import config
-
-from rag.embedding.store import get_collection
 from rag.embedding.embedding import embed_text
+from rag.embedding.store import get_vector_db_collection
 
 
 def search(question: str, top_k: int = config.retrieval.top_k) -> list[dict]:
@@ -21,7 +20,7 @@ def search(question: str, top_k: int = config.retrieval.top_k) -> list[dict]:
     rag.embedding.chunking) -- the actual context handed to the generation
     model, not just a snippet.
     """
-    collection = get_collection()
+    collection = get_vector_db_collection()
     query_embedding = embed_text(question)
     results = collection.query(
         query_embeddings=[query_embedding],  # type: ignore[arg-type]  # list[float] satisfies Sequence[float]; mypy can't see it through chromadb's invariant List stub
