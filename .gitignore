@@ -51,6 +51,9 @@ crash.*.log
 *_override.tf
 *_override.tf.json
 
+# Frontend dependencies (frontend/dist is covered by the dist/ rule above)
+node_modules/
+
 # NOT ignored, deliberately:
 #   .terraform.lock.hcl   -- pins provider hashes, belongs in version control
 #   environments/*.tfvars -- account ids and names, no secrets
