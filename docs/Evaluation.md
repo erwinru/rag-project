@@ -82,13 +82,38 @@ for both. Output is written to `config.evaluation.ragas_output_path`
   corpus. `generate_for_article` resets `persona_list` to `None` per article;
   `config.evaluation.ragas_personas_per_article` controls how many.
 
-- **One un-generatable article skips instead of aborting the batch.** RAGAS's
-  LLM-backed `CustomNodeFilter` can reject every chunk of a short or
-  low-signal article, after which `default_query_distribution` raises because
-  no synthesizer has a usable node cluster left. A full-corpus run is far too
-  expensive (several LLM calls per chunk, ~680 chunks) to lose at article 100
-  over one such article, so `main()` catches per-article failures, logs the
-  article name, and continues -- reporting the skip list at the end.
+- **Embedding calls are serialized behind a lock.** Concurrent calls into the
+  local sentence-transformers model segfault the interpreter (exit 139, no
+  traceback) -- see
+  [`Troubleshooting.md`](Troubleshooting.md#local-embedding-model----sigsegv-under-concurrent-ragas-extraction-resolved).
+  A crash like this is invisible to any `try`/`except`, which is worth
+  remembering when reading the skip-on-failure guard below: it protects
+  against Python exceptions only.
+
+- **RAGAS's `CustomNodeFilter` is dropped from the transform list.** For a
+  `CHUNK` node it scores the chunk against its *parent* document's summary,
+  which assumes the chunk was produced by RAGAS's own splitter and still has
+  a `child` relationship up to a `DOCUMENT` node. Chunks built directly from
+  `chunk_article_file` have no parent, so the filter reads an empty summary,
+  logs `does not have a summary. Skipping filtering.` and keeps the node --
+  once per chunk, roughly 680 warnings per run, while filtering nothing. It
+  costs nothing (it returns before making its LLM call), but an inert
+  LLM-backed quality gate is worse than a visibly absent one, so
+  `build_transforms` filters it out.
+
+  **Consequence: nothing currently drops low-signal chunks from the eval
+  set.** Restoring the filter would mean giving each article's graph a
+  summarized `DOCUMENT` parent node related to its chunks, at one extra LLM
+  call per article -- worth doing if generated question quality turns out to
+  be the bottleneck.
+
+- **One un-generatable article skips instead of aborting the batch.**
+  `default_query_distribution` raises outright when no synthesizer finds a
+  usable node cluster, which a very short or single-chunk article can
+  trigger. A full-corpus run is far too expensive (several LLM calls per
+  chunk, ~680 chunks) to lose at article 100 over one such article, so
+  `main()` catches per-article failures, logs the article name, and
+  continues -- reporting the skip list at the end.
 
 - **Generator embeddings are always the local Hugging Face model
   (`config.embedding.huggingface.model_id`), regardless of
@@ -125,19 +150,28 @@ for both. Output is written to `config.evaluation.ragas_output_path`
 
 ## Testing
 
-**The chunk-grounded rewrite has not been run end to end yet.** What is
-verified, offline and without a single LLM call: config loading, all imports,
-`build_chunk_nodes` producing `NodeType.CHUNK` nodes from
-`chunk_article_file` output, and `resolve_reference_chunk_ids` round-tripping
+**Verified, with the generator LLM stubbed out (no Bedrock calls):** config
+loading and imports; `build_chunk_nodes` producing `NodeType.CHUNK` nodes
+from `chunk_article_file` output; `resolve_reference_chunk_ids` round-tripping
 both a verbatim single-hop context and a `<N-hop>`-prefixed multi-hop pair
-back to the right chunk ids (and returning `None` for an unknown context).
-The RAGAS API details this rewrite depends on were read out of the installed
+back to the right chunk ids (and returning `None` for an unknown context);
+and the **full transform chain over three real articles** -- every node
+summarized, embedded (with real embeddings, which is where the segfault was),
+themed, NER-extracted, and related, with 2-8 chunks per article. The RAGAS
+API details this rewrite depends on were read out of the installed
 `ragas==0.4.3` rather than assumed.
 
-**Not verified:** the transforms + `generate()` path itself, which needs live
-generator-LLM calls. Do a `ragas_questions_per_article=2`, single-article
-smoke test before any full batch -- each article is now several LLM calls
-*per chunk* (summary, themes, NER, node filter), not per article.
+**Not verified:** `generate()` itself -- persona inference, scenario
+selection and query/answer writing -- which needs live generator-LLM calls,
+and the `reference_contexts` round trip on real generated output (as opposed
+to synthetic contexts fed through `resolve_reference_chunk_ids` directly).
+Do a single-article smoke test before any full batch: each article is now
+several LLM calls *per chunk* (summary, themes, NER), not per article.
+
+Because `_write_output` rewrites the file after every article, the cheapest
+smoke test needs no code change at all -- start the run and interrupt it once
+the first `[1/142]` line appears, then inspect `reference_chunk_ids` and the
+unresolved-context count in the output.
 
 A previous, pre-rewrite full batch did complete: 808 rows over 135 of 142
 articles, preserved at `data/eval/ragas_qa_old.json`. It is still usable for
@@ -147,8 +181,8 @@ above.
 
 ## Checklist / open edge cases
 
-- [ ] Single-article smoke test of the chunk-grounded path before the full
-      142-article batch
+- [ ] Single-article smoke test of `generate()` before the full 142-article
+      batch (the transform chain is already verified with a stubbed LLM)
 - [ ] No cost/time estimate for the full batch under the new node count
       (~680 chunk nodes vs. 142 document nodes; RAGAS's own splitter had
       already been producing a comparable number of chunk nodes, so the real
@@ -160,9 +194,9 @@ above.
       while `reference_chunk_ids` names only the one RAGAS sampled. Retrieval
       scoring should count an adjacent-chunk hit as its own category rather
       than a clean miss.
-- [ ] `CustomNodeFilter` silently excludes low-quality chunks from eval
-      entirely -- which are exactly the chunks most likely to be retrieval
-      failures. Worth logging how many nodes it drops per article.
+- [ ] No chunk quality filtering at all, now that `CustomNodeFilter` is out
+      (see Decisions). Add a summarized `DOCUMENT` parent per article if
+      generated-question quality needs it.
 - [ ] Option 2 (custom-prompted generator, the other 5 questions/article)
       not started
 - [ ] No dedup or quality filtering on RAGAS's output yet -- rows are

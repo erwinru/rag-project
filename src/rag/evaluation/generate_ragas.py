@@ -22,14 +22,17 @@ import asyncio
 import json
 import re
 import sys
+import threading
 import typing as t
 
+from langchain_core.embeddings import Embeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from ragas.llms import LangchainLLMWrapper
 from ragas.testset import TestsetGenerator
 from ragas.testset.graph import KnowledgeGraph, Node, NodeType
 from ragas.testset.transforms import (
+    CustomNodeFilter,
     Transforms,
     apply_transforms,
     default_transforms_for_prechunked,
@@ -52,6 +55,56 @@ if t.TYPE_CHECKING:
 # node's `page_content` through verbatim. Stripping that prefix is what lets
 # the same exact-text lookup resolve chunk ids for both kinds of row.
 HOP_PREFIX = re.compile(r"^<\d+-hop>\n\n")
+
+# Guards every call into the local sentence-transformers model. See
+# SerializedEmbeddings for why. Module-level, and a *threading* lock rather
+# than an asyncio one on purpose: RAGAS calls `asyncio.run()` once per
+# transform per article, so anything bound to an event loop would work for the
+# first transform and then fail with "bound to a different event loop".
+_EMBED_LOCK = threading.Lock()
+
+
+class SerializedEmbeddings(Embeddings):
+    """Serializes calls to a local embedding model, because concurrent ones
+    segfault.
+
+    `langchain_core.embeddings.Embeddings` implements its async methods by
+    handing the sync ones to a thread pool, and RAGAS's `EmbeddingExtractor`
+    issues one coroutine per node -- so N nodes means N threads inside the
+    same local sentence-transformers/torch model at once. On macOS/arm64 that
+    takes down the interpreter: SIGSEGV, no Python traceback, and nothing a
+    `try`/`except` anywhere in this module can catch. See
+    docs/Troubleshooting.md.
+
+    Only reachable since generation moved to pre-chunked nodes. RAGAS's
+    `default_transforms` embedded one *document* summary per article, so
+    there was never more than one call in flight;
+    `default_transforms_for_prechunked` embeds every chunk's summary.
+
+    Serializing here rather than passing `RunConfig(max_workers=1)` to
+    `apply_transforms` is deliberate: that would also serialize the
+    LLM-backed extractors, which are network-bound Bedrock calls that
+    genuinely want concurrency, and would turn a full-corpus run into
+    thousands of sequential round trips. Local embedding is fast (a whole
+    per-article graph embeds in well under a second), so the lock costs
+    almost nothing.
+
+    Wraps by delegation rather than subclassing `HuggingFaceEmbeddings`,
+    which is a pydantic model -- there's nothing to inherit here beyond the
+    two sync methods, and the async ones we want come from the `Embeddings`
+    ABC for free.
+    """
+
+    def __init__(self, embeddings: Embeddings) -> None:
+        self.embeddings = embeddings
+
+    def embed_query(self, text: str) -> list[float]:
+        with _EMBED_LOCK:
+            return self.embeddings.embed_query(text)
+
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        with _EMBED_LOCK:
+            return self.embeddings.embed_documents(texts)
 
 
 class AsyncCompatibleChatHuggingFace:
@@ -176,11 +229,41 @@ def build_generator() -> TestsetGenerator:
     # knowledge-graph construction, unrelated to which embedding backend the
     # RAG pipeline itself is configured to search with.
     generator_embeddings = LangchainEmbeddingsWrapper(
-        HuggingFaceEmbeddings(model_name=config.embedding.huggingface.model_id)
+        SerializedEmbeddings(
+            HuggingFaceEmbeddings(model_name=config.embedding.huggingface.model_id)
+        )
     )
     return TestsetGenerator(
         llm=build_generator_llm(), embedding_model=generator_embeddings
     )
+
+
+def build_transforms(generator: TestsetGenerator) -> Transforms:
+    """RAGAS's pre-chunked transforms, minus its chunk quality filter.
+
+    `CustomNodeFilter` is dropped because on this graph shape it cannot do
+    anything. For a `CHUNK` node it scores the chunk against its *parent*
+    document's summary, which assumes the chunk came from RAGAS's own
+    splitter and still has a `child` relationship to a `DOCUMENT` node. Our
+    chunks are built directly from `chunk_article_file` and have no parent,
+    so it reads an empty summary, logs "does not have a summary. Skipping
+    filtering." and returns False (keep) for every node -- once per chunk,
+    ~680 warnings a run, while filtering nothing.
+
+    Left in the list it is merely inert and noisy, but an LLM-backed quality
+    filter that silently no-ops is worse than one that is visibly absent:
+    as it stands nothing drops low-signal chunks from the eval set. Giving
+    each article's graph a summarized `DOCUMENT` parent would restore it, at
+    one extra LLM call per article -- see docs/Evaluation.md.
+    """
+    prechunked = default_transforms_for_prechunked(
+        llm=generator.llm, embedding_model=generator.embedding_model
+    )
+    return [
+        transform
+        for transform in prechunked  # type: ignore[union-attr]  # always a list; the `Transforms` alias is a broader union that includes non-iterables
+        if not isinstance(transform, CustomNodeFilter)
+    ]
 
 
 def generate_for_article(
@@ -233,9 +316,7 @@ def main() -> int:
     generator = build_generator()
     # Transforms only hold references to the llm/embedding model, so one set
     # is reused across every article's graph.
-    transforms = default_transforms_for_prechunked(
-        llm=generator.llm, embedding_model=generator.embedding_model
-    )
+    transforms = build_transforms(generator)
     output_path = config.evaluation.ragas_output_path
 
     rows: list[dict] = []
@@ -247,12 +328,13 @@ def main() -> int:
             records = generate_for_article(generator, transforms, path)
         except Exception as exc:  # keep going; report at the end
             # One article being un-generatable is expected, not exceptional:
-            # RAGAS's LLM-backed `CustomNodeFilter` can reject every chunk of
-            # a short or low-signal article, after which
-            # `default_query_distribution` raises because no synthesizer has
-            # a usable node cluster left. A full-corpus batch is far too
-            # expensive to lose at article 100 over one such article, so skip
-            # and report instead of aborting.
+            # `default_query_distribution` raises outright when no synthesizer
+            # finds a usable node cluster, which a very short or single-chunk
+            # article can trigger. A full-corpus batch is far too expensive to
+            # lose at article 100 over one such article, so skip and report
+            # instead of aborting. Note this catches only Python exceptions --
+            # see SerializedEmbeddings for a failure mode that
+            # kills the interpreter and cannot be caught here at all.
             skipped.append(path.name)
             print(f"[{i}/{len(paths)}] {path.name}: SKIPPED -- {exc}", file=sys.stderr)
             continue

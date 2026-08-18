@@ -118,3 +118,55 @@ then wait ~15 minutes before retrying.
 
 **Status:** in progress -- form submission not yet confirmed successful
 (retry pending the ~15 minute wait).
+
+## Local embedding model -- `SIGSEGV` under concurrent RAGAS extraction (resolved)
+
+**Symptom:** `rag-eval-ragas` dies during `Applying EmbeddingExtractor` with
+no Python traceback at all -- just a tqdm bar stuck at 0% and a parting
+warning from an unrelated subsystem:
+
+```
+Applying EmbeddingExtractor:   0%|          | 0/6 [00:00<?, ?it/s]
+.../multiprocessing/resource_tracker.py:301: UserWarning: resource_tracker:
+There appear to be 1 leaked semaphore objects to clean up at shutdown:
+{'/loky-45043-j82d26f3'}
+```
+
+Exit code is **139** (`SIGSEGV`). The leaked-semaphore warning is a symptom
+of the crash, not its cause -- it comes from a child process noticing the
+parent died uncleanly, and sends you looking at multiprocessing for no
+reason.
+
+**Root cause (confirmed by reproduction with zero LLM calls):**
+`langchain_core`'s default `Embeddings.aembed_query` offloads the sync call
+to a thread pool, and RAGAS's `EmbeddingExtractor` creates one coroutine per
+node. So N nodes means N OS threads entering the same local
+sentence-transformers/torch model concurrently, which segfaults the
+interpreter on macOS/arm64.
+
+Only reachable since generation moved to pre-chunked nodes
+([`Evaluation.md`](Evaluation.md)): RAGAS's `default_transforms` embedded
+just the one *document* summary per article, so there was never more than
+one concurrent call. `default_transforms_for_prechunked` embeds every
+chunk's summary -- 6 at once for the first article.
+
+**Why no traceback:** a segfault is not a Python exception. The per-article
+`try`/`except` in `generate_ragas.main()` cannot catch it, and neither can
+anything else -- the process is simply gone. Any "the batch survives one bad
+article" guard has this blind spot.
+
+**Fix:** `SerializedHuggingFaceEmbeddings` in
+[`generate_ragas.py`](../src/rag/evaluation/generate_ragas.py) -- a
+`threading.Lock` around `embed_query`/`embed_documents`, so the threads
+queue instead of racing. Deliberately *not* `RunConfig(max_workers=1)`,
+which would also serialize the network-bound Bedrock extractor calls and
+turn a full-corpus run into thousands of sequential round trips. The lock
+must be a `threading.Lock` at module level rather than an `asyncio.Lock`:
+RAGAS calls `asyncio.run()` once per transform per article, so a
+loop-bound primitive works for the first transform and then fails with
+"bound to a different event loop".
+
+**Reproducing it without spending anything:** set a fake `summary` property
+on a handful of `NodeType.CHUNK` nodes and run `EmbeddingExtractor` over
+them via `apply_transforms`. No generator LLM is involved in this crash at
+all, which makes it cheap to test in isolation.
