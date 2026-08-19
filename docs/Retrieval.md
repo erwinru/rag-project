@@ -1,13 +1,13 @@
 # Retrieval
 
-First basic version. Implementation: [`src/rag/retrieval/`](../src/rag/retrieval/).
+First basic version. Implementation: [`backend/src/rag/retrieval/`](../backend/src/rag/retrieval/).
 
 ## Overview
 
 Answering a question is three steps, two different Bedrock models, one
 local lookup:
 
-1. **Embed** ([`search.py`](../src/rag/retrieval/search.py)) -- the question
+1. **Embed** ([`search.py`](../backend/src/rag/retrieval/search.py)) -- the question
    is embedded with whichever backend `config.embedding.provider` selects
    (Titan Text Embeddings V2 or a local Hugging Face model -- see
    [`Embedding.md`](Embedding.md)), the *same* model used to build the
@@ -17,13 +17,13 @@ local lookup:
 2. **Retrieve** (`search.py`, same function) -- that vector is queried
    against the Chroma collection (`config.retrieval.top_k` results, 3 by
    default). This is a local lookup, not a Bedrock call.
-3. **Generate** ([`generation.py`](../src/rag/retrieval/generation.py)) --
+3. **Generate** ([`generation.py`](../backend/src/rag/retrieval/generation.py)) --
    the retrieved chunks' text, labeled by source article title, are handed
    to Claude Haiku as context in a prompt, along with the original question.
    Claude never sees the vectors or does any searching itself; it just reads
    whatever text `search()` handed it.
 
-[`ask.py`](../src/rag/retrieval/ask.py) wires these together and is the
+[`ask.py`](../backend/src/rag/retrieval/ask.py) wires these together and is the
 `rag-ask` CLI entry point.
 Steps 1-2 are also exposed over HTTP -- see [`API.md`](API.md).
 

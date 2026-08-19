@@ -1,7 +1,7 @@
 # Embedding
 
-Implementation: [`src/rag/embedding/embedding.py`](../src/rag/embedding/embedding.py)
-(dispatcher) and [`src/rag/embedding/providers/`](../src/rag/embedding/providers/)
+Implementation: [`backend/src/rag/embedding/embedding.py`](../backend/src/rag/embedding/embedding.py)
+(dispatcher) and [`backend/src/rag/embedding/providers/`](../backend/src/rag/embedding/providers/)
 (the two backends).
 
 ## Overview

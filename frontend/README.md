@@ -9,10 +9,11 @@ service is retrieval only.
 
 ## Run it
 
-The API first (it must be running -- the frontend has nothing else to talk to):
+The API first (it must be running -- the frontend has nothing else to talk
+to). It runs from `backend/`:
 
 ```bash
-uv run rag-api
+cd backend && uv run rag-api
 ```
 
 Then, in `frontend/`:

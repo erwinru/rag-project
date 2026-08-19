@@ -1,7 +1,7 @@
 # Evaluation
 
 First basic version -- **RAGAS half only.** Implementation:
-[`src/rag/evaluation/generate_ragas.py`](../src/rag/evaluation/generate_ragas.py).
+[`backend/src/rag/evaluation/generate_ragas.py`](../backend/src/rag/evaluation/generate_ragas.py).
 
 ## Overview
 

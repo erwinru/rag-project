@@ -1,6 +1,6 @@
 # Chunking
 
-First basic version. Implementation: [`src/rag/embedding/chunking.py`](../src/rag/embedding/chunking.py).
+First basic version. Implementation: [`backend/src/rag/embedding/chunking.py`](../backend/src/rag/embedding/chunking.py).
 
 ## Input / output
 

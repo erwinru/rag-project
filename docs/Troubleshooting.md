@@ -2,10 +2,10 @@
 
 ## Bedrock Titan Embeddings V2 -- `ThrottlingException` (unresolved)
 
-**Symptom:** `embed_text()` ([`src/rag/embedding/embedding.py`](../src/rag/embedding/embedding.py))
+**Symptom:** `embed_text()` ([`backend/src/rag/embedding/embedding.py`](../backend/src/rag/embedding/embedding.py))
 raises `ThrottlingException: reached max retries: 10` on `invoke_model`, even
 for a single, isolated call (not just under the bulk `rag-embed` ingestion
-loop). Region is `eu-central-1` ([`config.toml`](../config.toml)).
+loop). Region is `eu-central-1` ([`config.toml`](../backend/config.toml)).
 
 **Investigation so far:**
 
@@ -156,7 +156,7 @@ anything else -- the process is simply gone. Any "the batch survives one bad
 article" guard has this blind spot.
 
 **Fix:** `SerializedHuggingFaceEmbeddings` in
-[`generate_ragas.py`](../src/rag/evaluation/generate_ragas.py) -- a
+[`generate_ragas.py`](../backend/src/rag/evaluation/generate_ragas.py) -- a
 `threading.Lock` around `embed_query`/`embed_documents`, so the threads
 queue instead of racing. Deliberately *not* `RunConfig(max_workers=1)`,
 which would also serialize the network-bound Bedrock extractor calls and

@@ -1,14 +1,20 @@
 # Docker
 
 Container image for the retrieval API ([`API.md`](API.md)).
-Files: [`Dockerfile`](../Dockerfile), [`compose.yaml`](../compose.yaml),
-[`.dockerignore`](../.dockerignore).
+Files: [`backend/Dockerfile`](../backend/Dockerfile),
+[`backend/compose.yaml`](../backend/compose.yaml),
+[`backend/.dockerignore`](../backend/.dockerignore).
 
 ## Overview
 
 The image bundles the app and its dependencies (including the local
 embedding model); the **Chroma index is mounted at runtime**, not baked in.
-Build it, then run it with `data/index` mounted:
+Build it, then run it with `data/index` mounted. The build context is
+`backend/`, so run these from there:
+
+```bash
+cd backend
+```
 
 ```bash
 docker compose up --build
@@ -67,9 +73,11 @@ locally first and rebuild.
   mounted index just works. On Linux the host `data/index` is owned by the
   host uid and the container user can't write sqlite's journal -- run with
   `--user "$(id -u):$(id -g)"` there.
-- **`.dockerignore` excludes `data/` (~75MB), `.venv`, and `.git`.** The
-  host `.venv` in particular holds macOS wheels that would be useless and
-  slow to ship into a Linux build context.
+- **`.dockerignore` excludes `data/` (~75MB) and `.venv`.** The host
+  `.venv` in particular holds macOS wheels that would be useless and slow
+  to ship into a Linux build context. The repo's other top-level
+  directories -- `frontend/`, `docs/`, `infrastructure/`, `.git` -- need no
+  entry: the context is `backend/`, so they were never in it.
 - **AWS credentials are not in the image.** They're only needed if
   `config.embedding.provider` is switched to `bedrock`; `compose.yaml` has
   the env passthrough commented out for that case.

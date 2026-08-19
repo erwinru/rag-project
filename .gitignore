@@ -13,7 +13,7 @@ wheels/
 data/
 
 # Generated chunk-viewer data (regenerate with `uv run rag-viewer-data`)
-chunk_viewer/data.json
+backend/chunk_viewer/data.json
 
 # VSCode settings
 .vscode/

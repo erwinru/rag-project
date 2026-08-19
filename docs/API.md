@@ -1,6 +1,6 @@
 # API
 
-HTTP retrieval endpoint. Implementation: [`src/rag/api/`](../src/rag/api/).
+HTTP retrieval endpoint. Implementation: [`backend/src/rag/api/`](../backend/src/rag/api/).
 
 ## Overview
 
@@ -9,7 +9,12 @@ A FastAPI service that exposes step 1+2 of the pipeline
 similar chunks come back. There is deliberately **no generation step** --
 this returns retrieved source material, not an answer.
 
-Run it:
+Run it from `backend/` -- `config.toml` and the `data/` paths in it are
+resolved relative to the working directory:
+
+```bash
+cd backend
+```
 
 ```bash
 uv run rag-api

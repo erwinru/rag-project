@@ -1,9 +1,10 @@
-# Build context = what the image actually needs: pyproject.toml, uv.lock,
-# README.md (pyproject's `readme`, so the wheel build needs it), src/ and
-# config.toml. Everything below is either huge, host-specific, or both.
-
-.git
-.gitignore
+# Build context = backend/ (see compose.yaml), which is what the image needs:
+# pyproject.toml, uv.lock, README.md (pyproject's `readme`, so the wheel build
+# needs it), src/ and config.toml. Everything below is either huge,
+# host-specific, or both.
+#
+# Repo-root siblings -- frontend/, docs/, infrastructure/, .git -- are outside
+# this context entirely and need no entry here.
 
 # Host virtualenv -- the image builds its own, and this one has macOS wheels.
 .venv
@@ -13,9 +14,7 @@
 data/
 
 # Not part of the service
-infrastructure/
 chunk_viewer/
-docs/
 tests/
 dist/
 
@@ -26,9 +25,6 @@ dist/
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
-.claude/
-.vscode/
-.idea/
 
 .DS_Store
 
