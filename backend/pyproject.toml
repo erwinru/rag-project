@@ -5,17 +5,36 @@ description = "RAG over the ML6 blog: scrape, index, retrieve, generate."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "accelerate>=1.2.1",
+    "boto3>=1.43.68",
+    "chromadb>=1.5.9",
+    "fastapi>=0.121.0",
     "httpx>=0.28.1",
+    "langchain-aws>=0.2.23",
+    "langchain-community<0.4",
+    "langchain-huggingface>=0.1.2",
     "lxml>=6.1.1",
+    "pydantic>=2.13.4",
+    "ragas>=0.2.14",
+    "rapidfuzz>=3.10.1",
     "selectolax>=0.4.11",
+    "sentence-transformers>=3.3.1",
     "trafilatura>=2.2.0",
+    "uvicorn>=0.42.0",
 ]
 
 [project.scripts]
 rag-scrape = "rag.ingestion.scrape:main"
+rag-process = "rag.ingestion.processing:main"
+rag-embed = "rag.embedding.index:main"
+rag-viewer-data = "rag.embedding.viewer_data:main"
+rag-ask = "rag.retrieval.ask:main"
+rag-eval-ragas = "rag.evaluation.generate_ragas:main"
+rag-api = "rag.api.app:main"
 
 [dependency-groups]
 dev = [
+    "ipython>=9.16.1",
     "mypy>=2.3.0",
     "pytest>=8.3.0",
     "ruff>=0.16.2",

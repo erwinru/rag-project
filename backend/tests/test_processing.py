@@ -1,8 +1,4 @@
-from rag.ingestion.scrape import cache_name, flatten_image, flatten_name
-
-
-def test_cache_name_flattens_multi_segment_slugs():
-    assert cache_name("/foo/bar/") == "foo__bar"
+from rag.ingestion.processing import flatten_image, flatten_name
 
 
 def test_flatten_name_handles_the_json_ld_shapes():

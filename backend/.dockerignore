@@ -1,0 +1,34 @@
+# Build context = backend/ (see compose.yaml), which is what the image needs:
+# pyproject.toml, uv.lock, README.md (pyproject's `readme`, so the wheel build
+# needs it), src/ and config.toml. Everything below is either huge,
+# host-specific, or both.
+#
+# Repo-root siblings -- frontend/, docs/, infrastructure/, .git -- are outside
+# this context entirely and need no entry here.
+
+# Host virtualenv -- the image builds its own, and this one has macOS wheels.
+.venv
+
+# Scraper/index artifacts (~75MB, gitignored). The Chroma index is mounted
+# at runtime instead of baked in -- see docs/Docker.md.
+data/
+
+# Not part of the service
+chunk_viewer/
+tests/
+dist/
+
+# Caches and editor/tooling state
+**/__pycache__/
+*.py[oc]
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+.DS_Store
+
+# Don't recurse into a Docker build from inside a Docker build
+Dockerfile
+.dockerignore
+compose.yaml
